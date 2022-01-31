@@ -1,4 +1,4 @@
-import { Client as Sentry } from 'sentry-api';
+import { Client } from 'sentry-api';
 import { execSync } from 'child_process';
 import { LoaderContext } from './types/webpack-extras';
 import { tmpdir } from 'os';
@@ -13,8 +13,10 @@ import MiniCssExtractPlugin from 'mini-css-extract-plugin';
 import OptimizeCssAssetsPlugin from 'optimize-css-assets-webpack-plugin';
 import path from 'path';
 import UglifyJsPlugin from 'uglifyjs-webpack-plugin';
-import webpack from 'webpack';
 import WebpackOnBuildPlugin from 'on-build-webpack';
+import webpack from 'webpack';
+import * as webpackDevServer from 'webpack-dev-server';
+const Sentry = Client;
 
 interface ICommit {
 	id: string;
@@ -139,20 +141,18 @@ const commonConfig: webpack.Configuration = {
 		]
 	}
 };
-
 const hotreloadConfig: webpack.Configuration = {
 	mode: 'development',
+	entry: [
+		`webpack-dev-server/client?http://0.0.0.0:${config.PORT}`,
+		'./src/index'
+	],
 	output: {
 		filename: 'bundle.js',
 		pathinfo: false,
 		publicPath: '/'
 	},
 	devtool: 'inline-source-map',
-	entry: [
-		`webpack-dev-server/client?http://0.0.0.0:${config.PORT}`,
-		'webpack/hot/dev-server',
-		'./src/index'
-	],
 	module: {
 		rules: [
 			tsLoaderRule,
@@ -163,7 +163,6 @@ const hotreloadConfig: webpack.Configuration = {
 		]
 	},
 	plugins: [
-		new webpack.HotModuleReplacementPlugin(),
 		new webpack.DefinePlugin({
 			'process.env.ANALYTICS_KEY': `'${
 				config.ANALYTICS_KEY.DEVELOPMENT
@@ -211,7 +210,6 @@ const hotreloadConfig: webpack.Configuration = {
 		})
 	]
 };
-
 const productionConfig: webpack.Configuration = {
 	mode: 'production',
 	output: {
@@ -406,14 +404,23 @@ async function createSentryRelease() {
 	});
 }
 
-export default function(env: string) {
+export default function (env: string): webpack.Configuration {
 	if (env === 'production') {
 		console.log('Using production configuration');
 		process.env.NODE_ENV = 'production';
-		return merge(commonConfig, productionConfig);
+		const merge_export = merge(commonConfig, productionConfig);
+		return merge_export;
 	}
 
-	console.log('Using hotreload configuration');
-	process.env.NODE_ENV = 'development';
-	return merge(commonConfig, hotreloadConfig);
+	if (env === 'hotreload') {
+		console.log('Using hotreload configuration');
+		process.env.NODE_ENV = 'development';
+		const merge_export = merge(hotreloadConfig, commonConfig);
+		return merge_export;
+	}
+	else {
+		console.log('Error: configuration does not exist. Returning hotreload configuration');
+		return hotreloadConfig;
+
+	}
 }
